@@ -131,3 +131,9 @@ Demonstração completa do sistema:\
 👉 https://youtu.be/4JTZCAZo4PM
 
 
+## Link do Wokwi
+
+Demonstração completa do sistema no Wokwi:\
+👉 https://wokwi.com/projects/447505649401458689
+
+
