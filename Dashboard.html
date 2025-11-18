@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor IoT de Postura</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container { max-width: 1400px; margin: 0 auto; }
+        
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            animation: fadeIn 0.5s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .subtitle {
+            opacity: 0.9;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .sensor-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            backdrop-filter: blur(10px);
+        }
+        
+        .connection-status {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .connection-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #f44336;
+            animation: pulse 2s infinite;
+        }
+        
+        .connection-dot.connected { background: #4CAF50; }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.1); }
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            transition: all 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            gap: 12px;
+        }
+        
+        .icon {
+            width: 45px;
+            height: 45px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+        }
+        
+        .icon-blue { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .icon-green { background: linear-gradient(135deg, #11998e, #38ef7d); color: white; }
+        .icon-orange { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; }
+        .icon-red { background: linear-gradient(135deg, #fa709a, #fee140); color: white; }
+        .icon-purple { background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; }
+        .icon-yellow { background: linear-gradient(135deg, #ffd89b, #19547b); color: white; }
+        
+        .card-title {
+            font-size: 0.85em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+        
+        .card-value {
+            font-size: 2.8em;
+            font-weight: bold;
+            margin: 15px 0;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .card-subtitle {
+            color: #999;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 18px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin-top: 15px;
+            transition: all 0.3s;
+        }
+        
+        .status-sitting {
+            background: linear-gradient(135deg, #667eea15, #764ba215);
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .status-standing {
+            background: linear-gradient(135deg, #11998e15, #38ef7d15);
+            color: #11998e;
+            border: 2px solid #11998e;
+        }
+        
+        .status-paused {
+            background: linear-gradient(135deg, #ffd89b15, #19547b15);
+            color: #19547b;
+            border: 2px solid #ffd89b;
+        }
+        
+        .status-alert {
+            background: linear-gradient(135deg, #fa709a15, #fee14015);
+            color: #fa709a;
+            border: 2px solid #fa709a;
+            animation: shake 0.5s infinite;
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .alert-box {
+            background: linear-gradient(135deg, #fff3cd, #ffe8a1);
+            border-left: 4px solid #ffc107;
+            padding: 18px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .alert-box.active {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .pause-box {
+            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+            border-left: 4px solid #2196f3;
+            padding: 18px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .pause-box.active {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.5s ease;
+            border-radius: 5px;
+        }
+        
+        .pir-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+        
+        .pir-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            margin-bottom: 25px;
+        }
+        
+        .sessions-list {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .session-item {
+            padding: 18px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
+        }
+        
+        .session-item:hover {
+            background: #f8f9fa;
+            padding-left: 25px;
+        }
+        
+        .session-number {
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🪑 Monitor IoT de Postura</h1>
+            <div class="subtitle">
+                <span>Monitoramento em tempo real</span>
+                <span class="sensor-badge">📡 Sensor PIR HC-SR501</span>
+            </div>
+        </header>
+
+        <div class="connection-status">
+            <div class="connection-dot" id="connectionDot"></div>
+            <div class="connection-info">
+                <div class="connection-text" id="connectionText">Conectando ao broker MQTT...</div>
+                <div class="connection-details" id="connectionDetails">test.mosquitto.org:8081</div>
+            </div>
+        </div>
+
+        <div class="dashboard">
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon icon-blue">⏱️</div>
+                    <div><div class="card-title">Sessão Atual</div></div>
+                </div>
+                <div class="card-value" id="currentSession">00:00:00</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="sessionProgress"></div>
+                </div>
+                <p class="card-subtitle" id="progressText">0% até próximo alerta (90 min)</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon icon-green">📊</div>
+                    <div><div class="card-title">Tempo Total Hoje</div></div>
+                </div>
+                <div class="card-value" id="totalTime">0h 0m</div>
+                <p class="card-subtitle"><span id="sessionsCount">0</span> sessões completadas</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon icon-orange">☕</div>
+                    <div><div class="card-title">Pausas Realizadas</div></div>
+                </div>
+                <div class="card-value" id="breaksCount">0</div>
+                <p class="card-subtitle">Meta: 6-8 pausas/dia</p>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="breaksProgress" style="background: linear-gradient(90deg, #11998e, #38ef7d);"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="icon icon-purple">📡</div>
+                    <div><div class="card-title">Sensor PIR</div></div>
+                </div>
+                <div class="pir-indicator">
+                    <div class="pir-status">
+                        <span style="font-size: 28px;" id="pirIcon">👤</span>
+                        <span id="pirText">Aguardando...</span>
+                    </div>
+                    <div style="background: white; padding: 5px 12px; border-radius: 20px; font-size: 0.85em; color: #666;" id="pirCount">0 triggers</div>
+                </div>
+                <p class="card-subtitle" style="margin-top: 15px;">Detectando movimento corporal</p>
+            </div>
+
+            <div class="card" style="grid-column: 1 / -1;">
+                <div class="card-header">
+                    <div class="icon icon-red">🚨</div>
+                    <div><div class="card-title">Status Atual</div></div>
+                </div>
+                <div class="status-indicator" id="statusIndicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Aguardando dados...</span>
+                </div>
+                <div class="alert-box" id="alertBox">
+                    <div style="font-size: 24px;">⚠️</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; margin-bottom: 5px; color: #856404;">Hora de levantar!</div>
+                        <div style="font-size: 0.9em; color: #856404;">Você está sentado há mais de 90 minutos. Faça uma pausa e se movimente!</div>
+                    </div>
+                </div>
+                <div class="pause-box" id="pauseBox">
+                    <div style="font-size: 24px;">⏸️</div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; margin-bottom: 5px; color: #0d47a1;">Pausa em andamento</div>
+                        <div style="font-size: 0.9em; color: #1565c0;" id="pauseText">Aproveitando um descanso de 5 minutos...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h3 style="margin-bottom: 25px; font-size: 1.4em;">📈 Histórico de Sessões</h3>
+            <canvas id="sessionsChart"></canvas>
+        </div>
+
+        <div class="sessions-list">
+            <h3 style="margin-bottom: 25px; font-size: 1.4em;">📝 Sessões de Hoje</h3>
+            <div id="sessionsList">
+                <div class="empty-state">
+                    <div style="font-size: 64px; margin-bottom: 15px; opacity: 0.3;">🪑</div>
+                    <p>Nenhuma sessão registrada ainda</p>
+                    <p style="font-size: 0.9em; margin-top: 10px;">Sente-se na cadeira para iniciar o monitoramento</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BROKER_URL = 'wss://test.mosquitto.org:8081';
+        const TOPIC_STATUS = 'iot/posture/status';
+        const TOPIC_SESSION = 'iot/posture/session';
+        const TOPIC_ALERT = 'iot/posture/alert';
+        const TOPIC_PAUSE = 'iot/posture/pause';
+        
+        let client;
+        let sessions = [];
+        let currentSessionStart = null;
+        let totalSeconds = 0;
+        let breaksCount = 0;
+        let pirTriggers = 0;
+        let isPaused = false;
+        let chart;
+
+        function connectMQTT() {
+            client = mqtt.connect(BROKER_URL);
+
+            client.on('connect', () => {
+                console.log('✅ Conectado ao MQTT');
+                document.getElementById('connectionDot').classList.add('connected');
+                document.getElementById('connectionText').textContent = 'Conectado ao broker MQTT';
+                
+                client.subscribe([TOPIC_STATUS, TOPIC_SESSION, TOPIC_ALERT, TOPIC_PAUSE], (err) => {
+                    if (!err) {
+                        console.log('✅ Inscrito nos tópicos MQTT');
+                    }
+                });
+                
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            });
+
+            client.on('message', (topic, message) => {
+                console.log('📨 Mensagem recebida:', topic, message.toString());
+                const data = JSON.parse(message.toString());
+                handleMQTTMessage(topic, data);
+            });
+
+            client.on('error', (err) => {
+                console.error('❌ Erro MQTT:', err);
+                document.getElementById('connectionText').textContent = 'Erro na conexão MQTT';
+            });
+        }
+
+        function handleMQTTMessage(topic, data) {
+            if (topic === TOPIC_STATUS) {
+                updateStatus(data);
+            } else if (topic === TOPIC_SESSION) {
+                updateSession(data);
+            } else if (topic === TOPIC_ALERT) {
+                showAlert(data);
+            } else if (topic === TOPIC_PAUSE) {
+                showPause(data);
+            }
+        }
+
+        function updateStatus(data) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const pirIcon = document.getElementById('pirIcon');
+            const pirText = document.getElementById('pirText');
+            
+            if (data.pirTriggers !== undefined) {
+                pirTriggers = data.pirTriggers;
+                document.getElementById('pirCount').textContent = pirTriggers + ' triggers';
+            }
+            
+            if (data.presence) {
+                pirIcon.textContent = '👤';
+                pirText.textContent = 'Presença detectada';
+            } else {
+                pirIcon.textContent = '🚶';
+                pirText.textContent = 'Sem movimento';
+            }
+            
+            if (data.paused) {
+                isPaused = true;
+                indicator.className = 'status-indicator status-paused';
+                statusDot.style.background = '#ffd89b';
+                statusText.textContent = '⏸️ Pausa ativa';
+                currentSessionStart = null;
+            } else if (data.sitting) {
+                isPaused = false;
+                indicator.className = 'status-indicator status-sitting';
+                statusDot.style.background = '#667eea';
+                statusText.textContent = '🪑 Sentado - Focando';
+                
+                if (!currentSessionStart) {
+                    currentSessionStart = Date.now();
+                }
+            } else {
+                isPaused = false;
+                indicator.className = 'status-indicator status-standing';
+                statusDot.style.background = '#11998e';
+                statusText.textContent = '🚶 Em pé - Pausa ativa';
+                currentSessionStart = null;
+            }
+            
+            if (data.breaksToday !== undefined) {
+                breaksCount = data.breaksToday;
+                document.getElementById('breaksCount').textContent = breaksCount;
+                updateBreaksProgress();
+            }
+        }
+
+        function updateSession(data) {
+            totalSeconds = data.totalSeconds || 0;
+            
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            document.getElementById('totalTime').textContent = hours + 'h ' + minutes + 'm';
+            
+            document.getElementById('sessionsCount').textContent = data.sessionsCount || 0;
+            
+            if (data.breaksCount !== undefined) {
+                breaksCount = data.breaksCount;
+                document.getElementById('breaksCount').textContent = breaksCount;
+                updateBreaksProgress();
+            }
+            
+            if (data.newSession) {
+                addSession(data.newSession);
+            }
+        }
+
+        function showAlert(data) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            if (data.alert) {
+                document.getElementById('alertBox').classList.add('active');
+                indicator.className = 'status-indicator status-alert';
+                statusDot.style.background = '#fa709a';
+                statusText.textContent = '⚠️ ALERTA - Hora de levantar!';
+                
+                if (Notification.permission === 'granted') {
+                    new Notification('Monitor de Postura', {
+                        body: 'Você está sentado há mais de 90 minutos!',
+                        icon: '🪑'
+                    });
+                }
+            } else {
+                document.getElementById('alertBox').classList.remove('active');
+            }
+        }
+
+        function showPause(data) {
+            const pauseBox = document.getElementById('pauseBox');
+            
+            if (data.pause === 'started') {
+                pauseBox.classList.add('active');
+                console.log('⏸️ Pausa iniciada');
+            } else if (data.pause === 'ended') {
+                pauseBox.classList.remove('active');
+                console.log('✅ Pausa encerrada');
+            }
+            
+            if (data.breaksToday !== undefined) {
+                breaksCount = data.breaksToday;
+                document.getElementById('breaksCount').textContent = breaksCount;
+                updateBreaksProgress();
+            }
+        }
+
+        function addSession(session) {
+            sessions.push(session);
+            updateSessionsList();
+            updateChart();
+        }
+
+        function updateSessionsList() {
+            const list = document.getElementById('sessionsList');
+            
+            if (sessions.length === 0) return;
+            
+            list.innerHTML = sessions.map((s, i) => 
+                `<div class="session-item">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <div class="session-number">${i + 1}</div>
+                        <div>
+                            <strong>Sessão ${i + 1}</strong>
+                            <div style="color: #999; font-size: 0.85em;">🕐 ${s.time}</div>
+                        </div>
+                    </div>
+                    <div style="text-align: right;">
+                        <strong style="font-size: 1.3em; color: #667eea;">${s.duration}</strong>
+                        <div style="color: #999; font-size: 0.85em;">minutos</div>
+                    </div>
+                </div>`
+            ).reverse().join('');
+        }
+
+        function updateBreaksProgress() {
+            const progress = Math.min((breaksCount / 8) * 100, 100);
+            document.getElementById('breaksProgress').style.width = progress + '%';
+        }
+
+        function updateChart() {
+            const ctx = document.getElementById('sessionsChart').getContext('2d');
+            
+            if (chart) chart.destroy();
+            
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sessions.map((s, i) => '#' + (i + 1)),
+                    datasets: [{
+                        label: 'Duração (minutos)',
+                        data: sessions.map(s => s.duration),
+                        backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 2,
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Minutos' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCurrentSession() {
+            if (currentSessionStart && !isPaused) {
+                const elapsed = Math.floor((Date.now() - currentSessionStart) / 1000);
+                const hours = Math.floor(elapsed / 3600);
+                const minutes = Math.floor((elapsed % 3600) / 60);
+                const seconds = elapsed % 60;
+                
+                document.getElementById('currentSession').textContent = 
+                    String(hours).padStart(2, '0') + ':' +
+                    String(minutes).padStart(2, '0') + ':' +
+                    String(seconds).padStart(2, '0');
+                
+                const progress = Math.min((elapsed / 5400) * 100, 100);
+                document.getElementById('sessionProgress').style.width = progress + '%';
+                document.getElementById('progressText').textContent = 
+                    Math.floor(progress) + '% até próximo alerta (90 min)';
+            } else {
+                document.getElementById('currentSession').textContent = '00:00:00';
+                document.getElementById('sessionProgress').style.width = '0%';
+                document.getElementById('progressText').textContent = '0% até próximo alerta (90 min)';
+            }
+        }
+
+        window.onload = () => {
+            console.log('🚀 Iniciando aplicação');
+            connectMQTT();
+            setInterval(updateCurrentSession, 1000);
+        };
+    </script>
+</body>
+</html>
