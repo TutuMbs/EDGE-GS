@@ -4,6 +4,12 @@ Este projeto utiliza um **ESP32**, um **sensor PIR HC‑SR501**, **LED
 RGB**, **buzzer** e um **botão** para monitorar automaticamente o tempo
 sentado, enviar alertas e registrar sessões via **MQTT**.
 
+## 👥 Participantes do Grupo
+
+- Arthur Marcio de Barros Silva Rm5633559
+-  Mayke santos Rm562680
+-  Leonardo Yukio Iwagoe Ribeiro Rm562864
+
 ------------------------------------------------------------------------
 
 ## 🚀 Funcionalidades Principais
@@ -124,10 +130,4 @@ O código completo está incluído no repositório na pasta principal.
 Demonstração completa do sistema:\
 👉 https://youtu.be/4JTZCAZo4PM
 
-------------------------------------------------------------------------
 
-## 📄 Licença
-
-Este projeto é de uso livre para estudos, melhorias e modificações.
-
-------------------------------------------------------------------------
